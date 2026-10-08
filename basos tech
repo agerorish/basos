@@ -1,0 +1,173 @@
+-- Скрипт панели Paradox для Solar (с исправленным перетаскиванием)
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- Удаляем старую панель, если она уже открыта
+if CoreGui:FindFirstChild("ParadoxPanel") then
+    CoreGui.ParadoxPanel:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ParadoxPanel"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Главное окно
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -90)
+MainFrame.Size = UDim2.new(0, 400, 0, 110)
+
+-- Скругление углов главного окна
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+-- Шапка панели
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Parent = MainFrame
+TopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+TopBar.BorderSizePixel = 0
+TopBar.Size = UDim2.new(1, 0, 0, 35)
+TopBar.Active = true -- Обязательно для захвата нажатий
+
+local TopBarCorner = Instance.new("UICorner")
+TopBarCorner.CornerRadius = UDim.new(0, 8)
+TopBarCorner.Parent = TopBar
+
+-- Заголовок
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Parent = TopBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.Size = UDim2.new(0, 200, 1, 0)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "Paradox | Script Hub"
+Title.TextColor3 = Color3.fromRGB(240, 240, 240)
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Кнопка закрытия (крестик)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Parent = TopBar
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
+CloseButton.BackgroundTransparency = 1
+CloseButton.Position = UDim2.new(1, -35, 0, 0)
+CloseButton.Size = UDim2.new(0, 35, 1, 0)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "X"
+CloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+CloseButton.TextSize = 14
+
+CloseButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Область контента
+local ContentFrame = Instance.new("ScrollingFrame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Parent = MainFrame
+ContentFrame.Active = true
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Position = UDim2.new(0, 10, 0, 45)
+ContentFrame.Size = UDim2.new(1, -20, 1, -55)
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ContentFrame.ScrollBarThickness = 0
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = ContentFrame
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 8)
+
+-- Функция для создания кнопок
+local function createButton(name, callback)
+    local btn = Instance.new("TextButton")
+    btn.Parent = ContentFrame
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    btn.Size = UDim2.new(1, 0, 0, 35)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.TextSize = 13
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        callback(btn)
+    end)
+    return btn
+end
+
+-- Логика для функции зажима V -> Пробел
+local autoSpaceEnabled = false
+local holdingV = false
+
+createButton("Зажим V -> Пробел: [ВЫКЛ]", function(btn)
+    autoSpaceEnabled = not autoSpaceEnabled
+    if autoSpaceEnabled then
+        btn.Text = "Зажим V -> Пробел: [ВКЛ]"
+        btn.BackgroundColor3 = Color3.fromRGB(50, 140, 70)
+    else
+        btn.Text = "Зажим V -> Пробел: [ВЫКЛ]"
+        btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+        end)
+    end
+end)
+
+-- Отслеживание нажатия клавиши V
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.V then
+        holdingV = true
+        if autoSpaceEnabled then
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+            end)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.V then
+        holdingV = false
+        if autoSpaceEnabled then
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+            end)
+        end
+    end
+end)
+
+-- Исправленная плавная логика перетаскивания окна
+local dragging, dragStart, startPos
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
