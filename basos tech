@@ -1,9 +1,9 @@
--- Скрипт панели Paradox для Solar (с исправленным перетаскиванием)
+-- Скрипт панели Paradox для Solar (Исправленный моментальный сброс по отпусканию Z)
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
 
--- Удаляем старую панель, если она уже открыта
 if CoreGui:FindFirstChild("ParadoxPanel") then
     CoreGui.ParadoxPanel:Destroy()
 end
@@ -13,7 +13,6 @@ ScreenGui.Name = "ParadoxPanel"
 ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Главное окно
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Parent = ScreenGui
@@ -22,25 +21,22 @@ MainFrame.BorderSizePixel = 0
 MainFrame.Position = UDim2.new(0.5, -200, 0.5, -90)
 MainFrame.Size = UDim2.new(0, 400, 0, 110)
 
--- Скругление углов главного окна
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 8)
 UICorner.Parent = MainFrame
 
--- Шапка панели
 local TopBar = Instance.new("Frame")
 TopBar.Name = "TopBar"
 TopBar.Parent = MainFrame
 TopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
 TopBar.BorderSizePixel = 0
 TopBar.Size = UDim2.new(1, 0, 0, 35)
-TopBar.Active = true -- Обязательно для захвата нажатий
+TopBar.Active = true
 
 local TopBarCorner = Instance.new("UICorner")
 TopBarCorner.CornerRadius = UDim.new(0, 8)
 TopBarCorner.Parent = TopBar
 
--- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Parent = TopBar
@@ -53,7 +49,6 @@ Title.TextColor3 = Color3.fromRGB(240, 240, 240)
 Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Кнопка закрытия (крестик)
 local CloseButton = Instance.new("TextButton")
 CloseButton.Name = "CloseButton"
 CloseButton.Parent = TopBar
@@ -70,7 +65,6 @@ CloseButton.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- Область контента
 local ContentFrame = Instance.new("ScrollingFrame")
 ContentFrame.Name = "ContentFrame"
 ContentFrame.Parent = MainFrame
@@ -86,8 +80,7 @@ UIListLayout.Parent = ContentFrame
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 8)
 
--- Функция для создания кнопок
-local function createButton(name, callback)
+local function createButton(name)
     local btn = Instance.new("TextButton")
     btn.Parent = ContentFrame
     btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
@@ -96,59 +89,73 @@ local function createButton(name, callback)
     btn.Text = name
     btn.TextColor3 = Color3.fromRGB(220, 220, 220)
     btn.TextSize = 13
+    btn.Active = false
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = btn
     
-    btn.MouseButton1Click:Connect(function()
-        callback(btn)
-    end)
     return btn
 end
 
--- Логика для функции зажима V -> Пробел
-local autoSpaceEnabled = false
-local holdingV = false
+local macroActive = false
+local macroBtn = createButton("Зажим Z -> C ➔ V+Space: [ВЫКЛ]")
 
-createButton("Зажим V -> Пробел: [ВЫКЛ]", function(btn)
-    autoSpaceEnabled = not autoSpaceEnabled
-    if autoSpaceEnabled then
-        btn.Text = "Зажим V -> Пробел: [ВКЛ]"
-        btn.BackgroundColor3 = Color3.fromRGB(50, 140, 70)
-    else
-        btn.Text = "Зажим V -> Пробел: [ВЫКЛ]"
-        btn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-        pcall(function()
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Z then
+        if macroActive then return end
+        macroActive = true
+        
+        if macroBtn then
+            macroBtn.Text = "Зажим Z -> C ➔ V+Space: [ВКЛ]"
+            macroBtn.BackgroundColor3 = Color3.fromRGB(50, 140, 70)
+        end
+        
+        task.spawn(function()
+            -- 1. Нажимаем C
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.C, false, game)
+            end)
+            
+            -- Ждем 0.5 секунды, постоянно проверяя, не отпустил ли пользователь Z
+            local startTime = tick()
+            while tick() - startTime < 0.5 do
+                if not UserInputService:IsKeyDown(Enum.KeyCode.Z) then
+                    break
+                end
+                task.wait()
+            end
+            
+            -- Если пользователь всё еще удерживает Z, прожимаем V и Space
+            if UserInputService:IsKeyDown(Enum.KeyCode.Z) then
+                pcall(function()
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.V, false, game)
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                end)
+                
+                -- Держим клавиши активными, пока Z зажата
+                while UserInputService:IsKeyDown(Enum.KeyCode.Z) do
+                    task.wait()
+                end
+            end
+            
+            -- Мгновенно отпускаем все клавиши при прекращении удержания Z
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.V, false, game)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+            end)
+            
+            macroActive = false
+            if macroBtn then
+                macroBtn.Text = "Зажим Z -> C ➔ V+Space: [ВЫКЛ]"
+                macroBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+            end
         end)
     end
 end)
 
--- Отслеживание нажатия клавиши V
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.V then
-        holdingV = true
-        if autoSpaceEnabled then
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-            end)
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.V then
-        holdingV = false
-        if autoSpaceEnabled then
-            pcall(function()
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-            end)
-        end
-    end
-end)
-
--- Исправленная плавная логика перетаскивания окна
+-- Перетаскивание окна
 local dragging, dragStart, startPos
 
 TopBar.InputBegan:Connect(function(input)
